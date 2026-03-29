@@ -1,15 +1,11 @@
-use tokio::net::TcpStream;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::Mutex;
 use bytes::BytesMut;
-use tracing::info;
 use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio::sync::Mutex;
+use tracing::info;
 
-use crate::protocol::{
-    try_parse_message,
-    parse_startup_params,
-    StartupKind,
-};
+use crate::protocol::{StartupKind, parse_startup_params, try_parse_message};
 
 #[derive(Debug, Clone, Copy)]
 enum AuthState {
@@ -39,21 +35,19 @@ pub async fn proxy(client: TcpStream) -> anyhow::Result<()> {
             }
 
             while let Some(msg) = try_parse_message(&mut client_buf, startup_phase) {
-                if startup_phase {
-                    if let Some(kind) = msg.startup_kind {
-                        match kind {
-                            StartupKind::SslRequest => {
-                                info!("SSLRequest received");
-                            }
-                            StartupKind::CancelRequest => {
-                                info!("CancelRequest received");
-                            }
-                            StartupKind::StartupMessage => {
-                                let params = parse_startup_params(&msg.payload);
-                                info!("Startup params: {:?}", params);
-                                startup_phase = false;
-                                *auth_state.lock().await = AuthState::InProgress;
-                            }
+                if startup_phase && let Some(kind) = msg.startup_kind {
+                    match kind {
+                        StartupKind::SslRequest => {
+                            info!("SSLRequest received");
+                        }
+                        StartupKind::CancelRequest => {
+                            info!("CancelRequest received");
+                        }
+                        StartupKind::StartupMessage => {
+                            let params = parse_startup_params(&msg.payload);
+                            info!("Startup params: {:?}", params);
+                            startup_phase = false;
+                            *auth_state.lock().await = AuthState::InProgress;
                         }
                     }
                 }
@@ -81,9 +75,7 @@ pub async fn proxy(client: TcpStream) -> anyhow::Result<()> {
 
             while let Some(msg) = try_parse_message(&mut server_buf, false) {
                 if let Some(b'R') = msg.tag {
-                    let auth_code = u32::from_be_bytes(
-                        msg.payload[..4].try_into().unwrap()
-                    );
+                    let auth_code = u32::from_be_bytes(msg.payload[..4].try_into().unwrap());
 
                     match auth_code {
                         0 => {
